@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Batted Ball Data Visualization</title>
+        <link rel="icon" href="favicon.ico" type="image/x-icon">
+
+        <!-- chart.js and xlsx libraries -->
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.16.9/xlsx.full.min.js"></script>
+    
+        <!-- bebas neue -->
+        <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap" rel="stylesheet">
+        
+        <style>
+           
+        body {
+        font-family: 'Bebas Neue', sans-serif;
+        padding: 20px;
+        position: relative;
+        }   
+
+        .logo-container {
+        position: absolute; 
+        top: 10px; 
+        right: 10px; 
+        display: flex; 
+        gap: 10px; 
+        }
+
+        .logo-container img {
+        height: 40px; 
+        width: auto; 
+        }
+
+            h3, h2 {
+                font-family: 'Bebas Neue', sans-serif;
+                font-size: 32px;
+                color: #333;  
+                text-align: center;
+                text-transform: uppercase; 
+            }
+
+            .chart-caption {
+                font-size: 14px;
+                color: #666;
+                margin-top: 5px;
+                margin-bottom: 15px;
+                text-align: center;
+            }
+
+            #searchBar {
+                width: 200px;
+                padding: 10px;
+                font-size: 18px;
+                margin-right: 10px;
+                border: 1px solid #ccc;
+            }
+
+            #searchButton {
+                padding: 10px 20px;
+                font-size: 18px;
+                background-color: #333;
+                color: white;
+                border: none;
+                cursor: pointer;
+            }
+
+            #searchButton:hover {
+                background-color: #555;
+            }
+
+
+            .result-container {
+                margin-top: 20px;
+            }
+
+            .video-link {
+                color: blue;
+                text-decoration: underline;
+            }
+
+            .no-player-message {
+                color: red;
+                font-size: 18px;
+                text-align: center;
+                margin-top: 10px;
+            }
+        </style>
+    </head>
+    
+    <body>
+        <div class="logo-container">
+            <img src="Braves.png" alt="Logo 1">
+            <img src="mlb.jpeg" alt="Logo 2">
+            </div>
+        <h1>Batted Ball Data Visualization</h1>
+        
+        <input type="text" id="searchBar" placeholder="Last Name, First Name">
+        <button id="searchButton" onclick="searchPlayer()">Search</button>
+        
+        
+        <div id="result"></div>
+        <div id="noPlayerMessage" class="no-player-message" style="display: none;"></div>
+        
+        <h2>Hit Distance vs Hang Time</h2>
+        <p class="chart-caption">This chart displays all the hang times given each hit distance. 
+            The minimum hang time increases as hit distance increases. 
+        </p>
+        <canvas id="distanceVsHangTimeChart" width="400" height="200"></canvas>
+        
+        <h2>Exit Speed vs Hit Distance</h2>
+        <p class="chart-caption">This chart displays all the hit distances given each exit speed. The faster the
+            speed is, the greater the distance will likely be.</p>
+        <canvas id="exitSpeedsVsHitDistanceChart" width="400" height="200"></canvas>
+
+        <h2>Launch Angle vs Exit Speed</h2>
+        <p class="chart-caption">This chart displays all the exit speeds given each launch angle. It appears
+            most of the high-speed hits are between 0 and 40 degrees.
+        </p>
+        <canvas id="launchVsSpeedChart" width="400" height="200"></canvas>
+
+        <h2>Hit Distance vs Play Outcome</h2>
+        <p class="chart-caption">This chart displays the average hit distances for each play outcome. The average 
+            distance for a home run is 398.00 feet. 
+        </p>
+        <canvas id="hitDistanceVsPlayOutcomeChart" width="400" height="200"></canvas>
+
+        <h2>Exit Speed vs Play Outcome</h2>
+        <p class="chart-caption">This chart displays the average exit speed for each play outcome. The average
+            speed of a home run is 104.59 MPH.  
+        </p>
+        <canvas id="exitSpeedVsPlayOutcomeChart" width="400" height="200"></canvas>
+
+        
+        <div id="result" class="result-container"></div>
+
+        <footer>
+            <p>© 2024 Batted Ball Data Visualization by Usman Ahmed | All Rights Reserved</p>
+            <p>All logos, trademarks, and brand names are the property of their respective owners.</p>
+        </footer>
+        
+
+        <!-- js file -->
+        <script src="app.js"></script>
+
+        <script>
+            let jsonData = [];  // placeholder for excel data
+
+        // convert excel data to json
+            function loadExcelData() {
+                fetch('BattedBallData.xlsx')
+                    .then(response => response.arrayBuffer())
+                    .then(data => {
+                        const workbook = XLSX.read(data, { type: 'array' });
+                        const sheetName = workbook.SheetNames[0];
+                        const worksheet = workbook.Sheets[sheetName];
+                        jsonData = XLSX.utils.sheet_to_json(worksheet);
+                    });
+            }
+
+            function searchPlayer() {
+                const searchTerm = document.getElementById('searchBar').value.trim().toLowerCase(); // convert to lower case
+                document.getElementById('noPlayerMessage').style.display = 'none';
+                if (searchTerm === '') return;
+
+                // filter data by batter/pitcher
+                const filteredData = jsonData.filter(row =>
+                    (row.BATTER && row.BATTER.toLowerCase().includes(searchTerm)) || 
+                    (row.PITCHER && row.PITCHER.toLowerCase().includes(searchTerm))
+                );
+
+                console.log('Filtered Data:', filteredData); // debugging
+
+                if (filteredData.length === 0) {
+                    document.getElementById('noPlayerMessage').innerText = 'No player found.';
+                    document.getElementById('noPlayerMessage').style.display = 'block';
+                    document.getElementById('result').innerHTML = ''; // clear previous results
+                    return;
+                }
+
+                // calculate stats
+                const averages = calculateAverages(filteredData);
+                const playOutcomes = countPlayOutcomes(filteredData);
+                const hits = filteredData.map(row => ({
+                    date: row.GAME_DATE,
+                    outcome: row.PLAY_OUTCOME,
+                    video: row.VIDEO_LINK
+                }));
+
+                // check what data is being passed to displayResults
+                console.log('Averages:', averages);
+                console.log('Play Outcomes:', playOutcomes);
+                console.log('Hits:', hits);
+                displayResults(averages, playOutcomes, hits);
+            }
+
+
+            
+            function calculateAverages(data) {
+                const totalEntries = data.length;
+                const avgLaunchAngle = (data.reduce((sum, row) => sum + row.LAUNCH_ANGLE, 0) / totalEntries).toFixed(2);
+                const avgExitSpeed = (data.reduce((sum, row) => sum + row.EXIT_SPEED, 0) / totalEntries).toFixed(2);
+                const avgExitDirection = (data.reduce((sum, row) => sum + row.EXIT_DIRECTION, 0) / totalEntries).toFixed(2);
+                const avgHitDistance = (data.reduce((sum, row) => sum + row.HIT_DISTANCE, 0) / totalEntries).toFixed(2);
+                const avgHangTime = (data.reduce((sum, row) => sum + row.HANG_TIME, 0) / totalEntries).toFixed(2);
+                const avgHitSpinRate = (data.reduce((sum, row) => sum + row.HIT_SPIN_RATE, 0) / totalEntries).toFixed(2);
+
+                return {
+                    avgLaunchAngle,
+                    avgExitSpeed,
+                    avgExitDirection,
+                    avgHitDistance,
+                    avgHangTime,
+                    avgHitSpinRate
+                };
+            }
+
+            
+            function countPlayOutcomes(data) {
+                const outcomes = {};
+                data.forEach(row => {
+                    const outcome = row.PLAY_OUTCOME || 'Undefined';
+                    outcomes[outcome] = outcomes[outcome] ? outcomes[outcome] + 1 : 1;
+                });
+                return outcomes;
+            }
+
+            
+            function displayResults(averages, playOutcomes, hits) {
+                const resultDiv = document.getElementById('result');
+                
+                // clear previous results
+                resultDiv.innerHTML = '';
+
+                // averages
+                resultDiv.innerHTML += `
+                    <h3>Player Statistics</h3>
+                    <p><strong>Average Launch Angle:</strong> ${averages.avgLaunchAngle}°</p>
+                    <p><strong>Average Exit Speed:</strong> ${averages.avgExitSpeed} mph</p>
+                    <p><strong>Average Exit Direction:</strong> ${averages.avgExitDirection}°</p>
+                    <p><strong>Average Hit Distance:</strong> ${averages.avgHitDistance} ft</p>
+                    <p><strong>Average Hang Time:</strong> ${averages.avgHangTime} sec</p>
+                    <p><strong>Average Hit Spin Rate:</strong> ${averages.avgHitSpinRate} rpm</p>
+                `;
+
+                // outcomes
+                resultDiv.innerHTML += `<h3>Play Outcomes</h3><ul>`;
+                for (const [outcome, count] of Object.entries(playOutcomes)) {
+                    resultDiv.innerHTML += `<li>${outcome}: ${count}</li>`;
+                }
+                resultDiv.innerHTML += `</ul>`;
+
+                // hit records
+                resultDiv.innerHTML += `<h3>Hit Records</h3><ul>`;
+                hits.forEach(hit => {
+                    resultDiv.innerHTML += `
+                        <li>${hit.date} - ${hit.outcome} 
+                            <a href="${hit.video}" class="video-link">Video</a>
+                        </li>`;
+                });
+                resultDiv.innerHTML += `</ul>`;
+            }
+
+
+
+            loadExcelData();
+
+        </script>
+
+    </body>
+</html>
+
+
